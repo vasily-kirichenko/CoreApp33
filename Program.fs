@@ -81,7 +81,7 @@ module Opt =
                 else exists (index + 1)
             exists startAt
     
-    let jaro (s1: string) (s2: string) =    
+    let jaro (s1: string, s2: string, usePool: bool) =    
         // The radius is half of the lesser of the two string lengths rounded up.
         let matchRadius = 
             let minLen = Math.Min(s1.Length, s2.Length)
@@ -99,8 +99,8 @@ module Opt =
             ArraySegment(buff, 0, count)
     
         // The sets of common characters and their lengths as floats
-        let buff1 = ArrayPool.Shared.Rent s1.Length 
-        let buff2 = ArrayPool.Shared.Rent s2.Length
+        let buff1 = if usePool then ArrayPool.Shared.Rent s1.Length else Array.zeroCreate s1.Length 
+        let buff2 = if usePool then ArrayPool.Shared.Rent s2.Length else Array.zeroCreate s2.Length 
         try 
             let c1 = commonChars s1 s2 buff1
             let c2 = commonChars s2 s1 buff2
@@ -126,8 +126,9 @@ module Opt =
             // This is for cases where |s1|, |s2| or m are zero 
             if Double.IsNaN result then 0.0 else result
         finally
-            ArrayPool.Shared.Return buff1
-            ArrayPool.Shared.Return buff2
+            if usePool then
+                ArrayPool.Shared.Return buff1
+                ArrayPool.Shared.Return buff2
     
 open BenchmarkDotNet.Attributes    
 open BenchmarkDotNet.Attributes.Jobs    
@@ -140,13 +141,16 @@ type Test() =
     member __.Base() = Base.jaro "Environment" "Envronment"
     
     [<Benchmark>]
-    member __.Opt() = Opt.jaro "Environment" "Envronment"        
+    member __.Opt() = Opt.jaro ("Environment", "Envronment", false)
+    
+    [<Benchmark>]
+    member __.OptArrayPool() = Opt.jaro ("Environment", "Envronment", true)        
     
 open System
 
 [<EntryPoint>]
 let main argv =
-    printfn "%f" (Opt.jaro "Environment" "Envronment")
+    printfn "%f" (Opt.jaro ("Environment", "Envronment", true))
     BenchmarkRunner.Run<Test>() |> ignore
 //    let sw = System.Diagnostics.Stopwatch.StartNew()
 //    for i = 1 to 10_000_000 do
